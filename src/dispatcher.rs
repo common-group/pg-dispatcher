@@ -25,6 +25,11 @@ impl <'a>DispatcherConfig<'a> {
     }
 }
 
+pub fn listener(dispatcher: &DispatcherConfig) {
+    println!("config -> {:?}", dispatcher)
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
