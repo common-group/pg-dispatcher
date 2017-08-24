@@ -1,5 +1,6 @@
 mod cli;
 mod dispatcher;
+mod thread_pool;
 
 use dispatcher::{Dispatcher, DispatcherConfig};
 use cli::{create_cli_app};
