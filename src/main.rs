@@ -1,2 +1,3 @@
+mod cli;
 fn main() {
 }
