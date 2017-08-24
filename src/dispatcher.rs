@@ -1,7 +1,7 @@
 extern crate clap;
 use self::clap::{ArgMatches};
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct DispatcherConfig <'a> {
     pub db_url: &'a str,
     pub db_channel: &'a str,
@@ -25,8 +25,17 @@ impl <'a>DispatcherConfig<'a> {
     }
 }
 
-pub fn listener(dispatcher: &DispatcherConfig) {
-    println!("config -> {:?}", dispatcher)
+#[derive(Debug)]
+pub struct Dispatcher<'a> {
+    pub config: &'a DispatcherConfig<'a>
+}
+
+impl <'a>Dispatcher<'a> {
+    pub fn from_config(config: &'a DispatcherConfig<'a>) -> Dispatcher {
+        Dispatcher {
+            config: config
+        }
+    }
 }
 
 
@@ -36,19 +45,31 @@ mod tests {
     use cli;
 
     #[test]
-    fn config_from_matches_test() {
+    fn dispatcher_config_from_matches_test() {
         let matches = cli::create_cli_app()
             .get_matches_from(vec![
                               "pg-dispatch", "--db-uri", "foodb",
                               "--channel", "foochan",
                               "--exec", "sh test.sh",
                               "--workers", "5"]);
-
         let config = DispatcherConfig::from_matches(&matches);
 
         assert_eq!(config.db_url, "foodb");
         assert_eq!(config.db_channel, "foochan");
         assert_eq!(config.exec_command, "sh test.sh");
         assert_eq!(config.max_threads, 5);
+    }
+
+    #[test]
+    fn dispatcher_from_config() {
+        let matches = cli::create_cli_app()
+            .get_matches_from(vec![
+                              "pg-dispatch", "--db-uri", "foodb",
+                              "--channel", "foochan",
+                              "--exec", "sh test.sh",
+                              "--workers", "5"]);
+        let config = DispatcherConfig::from_matches(&matches);
+
+        let _disptacher = Dispatcher::from_config(&config);
     }
 }
