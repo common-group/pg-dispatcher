@@ -1,4 +1,5 @@
 extern crate clap;
+use thread_pool::{ThreadPool};
 use self::clap::{ArgMatches};
 
 #[derive(Debug)]
@@ -12,8 +13,8 @@ pub struct DispatcherConfig <'a> {
 impl <'a>DispatcherConfig<'a> {
     pub fn from_matches(matches: &'a ArgMatches<'a>) -> DispatcherConfig {
         let max_threads = match matches.value_of("workers") {
-                Some(v) => v.parse::<usize>().unwrap_or(4),
-                _ => 4
+            Some(v) => v.parse::<usize>().unwrap_or(4),
+            _ => 4
         };
 
         DispatcherConfig {
@@ -27,13 +28,15 @@ impl <'a>DispatcherConfig<'a> {
 
 #[derive(Debug)]
 pub struct Dispatcher<'a> {
-    pub config: &'a DispatcherConfig<'a>
+    pub config: &'a DispatcherConfig<'a>,
+    pub pool: ThreadPool
 }
 
 impl <'a>Dispatcher<'a> {
     pub fn from_config(config: &'a DispatcherConfig<'a>) -> Dispatcher {
         Dispatcher {
-            config: config
+            config: config,
+            pool: ThreadPool::new(config.max_threads)
         }
     }
 }
