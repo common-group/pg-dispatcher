@@ -2,7 +2,7 @@ extern crate clap;
 use thread_pool::{ThreadPool};
 use self::clap::{ArgMatches};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DispatcherConfig <'a> {
     pub db_url: &'a str,
     pub db_channel: &'a str,

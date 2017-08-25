@@ -9,6 +9,7 @@ use postgres::{Connection, TlsMode};
 use dispatcher::{Dispatcher, DispatcherConfig};
 use fallible_iterator::FallibleIterator;
 use cli::{create_cli_app};
+use std::process::Command;
 
 fn main() {
     let cli_matches = create_cli_app().get_matches();
@@ -25,8 +26,27 @@ fn main() {
     loop {
         match iter.next() {
             Ok(Some(notification)) => {
+                let cmd_handler = config.exec_command.to_string().clone();
+                let payload = notification.payload.clone();
                 dispatcher.pool.execute(move||{
-                    println!("job should print: {:?}", notification);
+                    let split = cmd_handler.split_whitespace();
+                    let cmd_vector = split.collect::<Vec<&str>>();
+                    let output = Command::new(cmd_vector[0])
+                        .args(&cmd_vector[1..cmd_vector.len()])
+                        .env("PG_DISPATCH_PAYLOAD", payload)
+                        .output().unwrap_or_else(|e| {
+                            panic!("failed to execute process: {}\n", e)
+                        });
+
+                    if output.status.success() {
+                        let s = String::from_utf8_lossy(&output.stdout);
+
+                        print!("sh stdout was: {}", s);
+                    } else {
+                        let s = String::from_utf8_lossy(&output.stderr);
+
+                        print!("rustc failed and stderr was:\n{}\n", s);
+                    }
                 });
             },
             _ => {}
