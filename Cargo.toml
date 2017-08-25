@@ -5,3 +5,5 @@ authors = ["Antônio Roberto <forevertonny@gmail.com>"]
 
 [dependencies]
 clap = "~2.19.0"
+postgres = "0.15"
+fallible-iterator = "0.1.3"
