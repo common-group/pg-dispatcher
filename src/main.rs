@@ -34,7 +34,7 @@ fn main() {
     // instantiate dispatcher
     let dispatcher = Dispatcher::from_config(&config);
 
-    // use a command vector reference
+    // use a shared reference for the command vector
     let command_vector: Arc<Vec<OsString>> = Arc::new(
         config
             .exec_command
@@ -42,7 +42,6 @@ fn main() {
             .map(|s| OsString::from(s))
             .collect(),
     );
-
 
     loop {
         match iter.next() {
