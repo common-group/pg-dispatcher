@@ -18,9 +18,17 @@ fn main() {
     // parse arguments and build dispatcher
     let cli_matches = create_cli_app().get_matches();
     let config = DispatcherConfig::from_matches(&cli_matches);
+
+    // connect to the database
+    let conn = Connection::connect(config.db_url, TlsMode::None).unwrap();
+    let _listen_execute = conn.execute(&format!("LISTEN {}", config.db_channel), &[]);
+    let notifications = conn.notifications();
+    let mut iter = notifications.blocking_iter();
+
+    // instantiate dispatcher
     let dispatcher = Dispatcher::from_config(&config);
 
-    // create command vector reference
+    // use a command vector reference
     let command_vector: Arc<Vec<OsString>> = Arc::new(
         config
             .exec_command
