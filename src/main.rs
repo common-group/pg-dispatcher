@@ -9,7 +9,7 @@ use postgres::{Connection, TlsMode};
 use dispatcher::{Dispatcher, DispatcherConfig};
 use fallible_iterator::FallibleIterator;
 use cli::create_cli_app;
-use std::process::Command;
+use std::process::{Command, exit};
 use std::ffi::OsString;
 use std::sync::Arc;
 
@@ -20,7 +20,13 @@ fn main() {
     let config = DispatcherConfig::from_matches(&cli_matches);
 
     // connect to the database
-    let conn = Connection::connect(config.db_url, TlsMode::None).unwrap();
+    let conn = match Connection::connect(config.db_url, TlsMode::None) {
+        Ok(conn) => conn,
+        Err(error) => {
+            eprintln!("Failed to connect to the database: {}", error);
+            exit(1);
+        }
+    };
     let _listen_execute = conn.execute(&format!("LISTEN {}", config.db_channel), &[]);
     let notifications = conn.notifications();
     let mut iter = notifications.blocking_iter();
@@ -36,12 +42,6 @@ fn main() {
             .map(|s| OsString::from(s))
             .collect(),
     );
-
-    // connect to the database
-    let conn = Connection::connect(config.db_url, TlsMode::None).unwrap();
-    let _listen_execute = conn.execute(&format!("LISTEN {}", config.db_channel), &[]);
-    let notifications = conn.notifications();
-    let mut iter = notifications.blocking_iter();
 
 
     loop {
