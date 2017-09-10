@@ -10,28 +10,42 @@ use dispatcher::{Dispatcher, DispatcherConfig};
 use fallible_iterator::FallibleIterator;
 use cli::create_cli_app;
 use std::process::Command;
+use std::ffi::OsString;
+use std::sync::Arc;
+
 
 fn main() {
+    // parse arguments and build dispatcher
     let cli_matches = create_cli_app().get_matches();
     let config = DispatcherConfig::from_matches(&cli_matches);
     let dispatcher = Dispatcher::from_config(&config);
 
+    // create command vector reference
+    let command_vector: Arc<Vec<OsString>> = Arc::new(
+        config
+            .exec_command
+            .split_whitespace()
+            .map(|s| OsString::from(s))
+            .collect(),
+    );
+
+    // connect to the database
     let conn = Connection::connect(config.db_url, TlsMode::None).unwrap();
     let _listen_execute = conn.execute(&format!("LISTEN {}", config.db_channel), &[]);
     let notifications = conn.notifications();
     let mut iter = notifications.blocking_iter();
 
+
     loop {
         match iter.next() {
             Ok(Some(notification)) => {
-                let cmd_handler = config.exec_command.to_string();
+
+                let command_vector = Arc::clone(&command_vector);
 
                 dispatcher.pool.execute(move || {
-                    let split = cmd_handler.split_whitespace();
-                    let cmd_vector = split.collect::<Vec<&str>>();
                     let output =
-                        Command::new(cmd_vector[0])
-                            .args(&cmd_vector[1..cmd_vector.len()])
+                        Command::new(&command_vector[0])
+                            .args(&command_vector[1..])
                             .env("PG_DISPATCH_PAYLOAD", notification.payload)
                             .output()
                             .unwrap_or_else(|e| panic!("failed to execute process: {}\n", e));
