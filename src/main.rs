@@ -24,15 +24,15 @@ fn main() {
     loop {
         match iter.next() {
             Ok(Some(notification)) => {
-                let cmd_handler = config.exec_command.to_string().clone();
-                let payload = notification.payload.clone();
+                let cmd_handler = config.exec_command.to_string();
+
                 dispatcher.pool.execute(move || {
                     let split = cmd_handler.split_whitespace();
                     let cmd_vector = split.collect::<Vec<&str>>();
                     let output =
                         Command::new(cmd_vector[0])
                             .args(&cmd_vector[1..cmd_vector.len()])
-                            .env("PG_DISPATCH_PAYLOAD", payload)
+                            .env("PG_DISPATCH_PAYLOAD", notification.payload)
                             .output()
                             .unwrap_or_else(|e| panic!("failed to execute process: {}\n", e));
 
