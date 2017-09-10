@@ -23,11 +23,14 @@ fn main() {
     let conn = match Connection::connect(config.db_url, TlsMode::None) {
         Ok(conn) => conn,
         Err(error) => {
-            eprintln!("Failed to connect to the database: {}", error);
+            eprintln!("Failed to connect to the database: {}.", error);
             exit(1);
         }
     };
-    let _listen_execute = conn.execute(&format!("LISTEN {}", config.db_channel), &[]);
+    if let Err(error) = conn.execute(&format!("LISTEN {}", config.db_channel), &[]) {
+        eprintln!("Failed to execute LISTEN command in database.");
+        exit(1)
+    }
     let notifications = conn.notifications();
     let mut iter = notifications.blocking_iter();
 
@@ -43,6 +46,7 @@ fn main() {
             .collect(),
     );
 
+    // main loop
     loop {
         match iter.next() {
             Ok(Some(notification)) => {
