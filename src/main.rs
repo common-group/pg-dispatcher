@@ -31,7 +31,7 @@ fn main() {
     }
 
     println!(
-        "[pg-dispatch] Listening to \"{}\" channel.",
+        "[pg-dispatch] Listening to channel: \"{}\".",
         config.db_channel
     );
 
