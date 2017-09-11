@@ -2,7 +2,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::ffi::OsString;
-use std::io::{Read, BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 
 /// For exchanging in the job channel
 enum Message {
