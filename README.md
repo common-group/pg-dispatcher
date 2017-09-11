@@ -2,7 +2,7 @@
 
 # pg-dispatch
 
-Abstract listener for PostgreSQL, that listens to a single database channel and executes a
+Abstract listener for PostgreSQL that listens to a single database channel and executes a
 given command when a notification arrives. The notification payload, if any, is sent
 though the executed command's standard input.
 
@@ -75,8 +75,8 @@ You can also use commands with arguments, just pass them inside the same string:
 ```sh
 $ ./target/release/pg-disptacher                         \
       --db-uri='postgres://postgres@localhost/postgres'  \
-      --channel="test_channel"							 \
-	  --exec="sh some-script.sh"                         \
+      --channel="test_channel"                           \
+      --exec="sh some-script.sh"                         \
       --workers=100
 ```
 
@@ -84,13 +84,13 @@ Where `some-script.sh` could be like:
 
 ```sh
 #!/bin/sh
-
 PAYLOAD=$(cat) # read from stdin
 echo "The payload was: $PAYLOAD!"
 ```
 
 Output *(after notification was issued)*:
 ```
+[pg-dispatch] Listening to channel: "test_channel".
 [worker-1] Got payload: hello from postgres.
 [worker-1] Command succeded with status code 0.
 [sh-1] The payload was: hello from postgres!
