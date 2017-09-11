@@ -23,11 +23,15 @@ impl ThreadPool {
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
 
-        let command_vector = Arc::new(Mutex::new(command_vector));
+        let command_vector = Arc::new(command_vector);
 
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
-            workers.push(Worker::new(id, receiver.clone(), command_vector.clone()));
+            workers.push(Worker::new(
+                id,
+                receiver.clone(),
+                Arc::clone(&command_vector),
+            ));
         }
 
         ThreadPool { workers, sender }
@@ -68,12 +72,11 @@ impl Worker {
     fn new(
         id: usize,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
-        command_vector: Arc<Mutex<Vec<OsString>>>,
+        command_vector: Arc<Vec<OsString>>,
     ) -> Worker {
 
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
-            let command_vector = command_vector.lock().unwrap();
             let program = &command_vector[0];
             let program_arguments = &command_vector[1..];
 
