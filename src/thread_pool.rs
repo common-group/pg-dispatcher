@@ -1,8 +1,11 @@
+use std::process::Command;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
+use std::ffi::OsString;
 
+/// For exchanging in the job channel
 enum Message {
-    NewJob(Job),
+    Payload(String),
     Terminate,
 }
 
@@ -12,45 +15,26 @@ pub struct ThreadPool {
     sender: mpsc::Sender<Message>,
 }
 
-trait FnBox {
-    fn call_box(self: Box<Self>);
-}
-
-impl<F: FnOnce()> FnBox for F {
-    fn call_box(self: Box<F>) {
-        (*self)()
-    }
-}
-
-type Job = Box<FnBox + Send + 'static>;
-
 impl ThreadPool {
-    pub fn new(size: usize) -> ThreadPool {
+    pub fn new(size: usize, command_vector: Vec<OsString>) -> ThreadPool {
         assert!(size > 0);
 
+        // channel for exchanging job messages inside ThreadPool
         let (sender, receiver) = mpsc::channel();
-
         let receiver = Arc::new(Mutex::new(receiver));
 
+        let command_vector = Arc::new(Mutex::new(command_vector));
+
         let mut workers = Vec::with_capacity(size);
-
         for id in 0..size {
-            workers.push(Worker::new(id, receiver.clone()));
+            workers.push(Worker::new(id, receiver.clone(), command_vector.clone()));
         }
 
-        ThreadPool {
-            workers,
-            sender,
-        }
+        ThreadPool { workers, sender }
     }
 
-    pub fn execute<F>(&self, f: F)
-        where
-            F: FnOnce() + Send + 'static
-    {
-        let job = Box::new(f);
-
-        self.sender.send(Message::NewJob(job)).unwrap();
+    pub fn execute(&self, payload: String) {
+        self.sender.send(Message::Payload(payload)).unwrap();
     }
 }
 
@@ -81,32 +65,72 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) ->
-        Worker {
+    fn new(
+        id: usize,
+        receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
+        command_vector: Arc<Mutex<Vec<OsString>>>,
+    ) -> Worker {
 
-        let thread = thread::spawn(move ||{
-            loop {
-                let message = receiver.lock().unwrap().recv().unwrap();
+        let thread = thread::spawn(move || loop {
+            let message = receiver.lock().unwrap().recv().unwrap();
+            let command_vector = command_vector.lock().unwrap();
+            let program = &command_vector[0];
+            let program_arguments = &command_vector[1..];
 
-                match message {
-                    Message::NewJob(job) => {
-                        println!("Worker {} got a job; executing.", id);
+            match message {
+                Message::Payload(payload) => {
+                    println!("[worker-{}] Got payload: {}.", id, payload);
 
-                        job.call_box();
-                    },
-                    Message::Terminate => {
-                        println!("Worker {} was told to terminate.", id);
+                    // build & spawn command
+                    // TODO: if a thread panics, does the threadpool replaces them?
+                    let output =
+                        Command::new(&program)
+                            .args(program_arguments)
+                            .env("PG_DISPATCH_PAYLOAD", payload)
+                            .output()
+                            .unwrap_or_else(|e| panic!("failed to execute process: {}\n", e));
 
-                        break;
-                    },
+                    // collect stdout, stderr, status_code
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    let exit_status = output.status;
+
+                    // propagate standard streams and exit status code
+                    for line in stderr.lines() {
+                        eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line);
+                    }
+
+                    for line in stdout.lines() {
+                        println!("[{}-{}] {}", program.to_str().unwrap(), id, line);
+                    }
+                    match exit_status.success() {
+                        true => {
+                            println!(
+                                "[worker-{}] Command succeded with status code {}.",
+                                id,
+                                exit_status.code().unwrap()
+                            );
+                        }
+                        false => {
+                            // TODO: ExitStatus.code() will return None if process was terminated by a signal.
+                            eprintln!(
+                                "[worker-{}] Command {} failed with status code {}.",
+                                id,
+                                program.to_str().unwrap(),
+                                exit_status.code().unwrap()
+                            );
+                        }
+                    }
+                }
+                Message::Terminate => {
+                    println!("[worker-{}] Terminating.", id);
+                    break;
                 }
             }
         });
-
         Worker {
             id,
             thread: Some(thread),
         }
     }
 }
-
