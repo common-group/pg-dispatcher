@@ -74,7 +74,10 @@ mod tests {
 
         assert_eq!(config.db_url, "foodb");
         assert_eq!(config.db_channel, "foochan");
-        assert_eq!(config.exec_command, "sh test.sh");
+        assert_eq!(
+            config.command_vector,
+            vec![OsString::from("sh"), OsString::from("test.sh")]
+        );
         assert_eq!(config.max_threads, 5);
     }
 
