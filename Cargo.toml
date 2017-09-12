@@ -1,7 +1,8 @@
 [package]
 name = "pg-dispatcher"
 version = "0.1.0"
-authors = ["Antônio Roberto <forevertonny@gmail.com>"]
+authors = ["Antônio Roberto <forevertonny@gmail.com>", "Tiago Guimarães <tilacog@gmail.com>"]
+
 
 [dependencies]
 clap = "~2.19.0"

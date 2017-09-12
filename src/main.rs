@@ -13,11 +13,11 @@ use std::process::exit;
 
 
 fn main() {
-    // parse arguments and build dispatcher
+    // consume cli arguments
     let cli_matches = create_cli_app().get_matches();
     let config = Config::from_matches(&cli_matches);
 
-    // connect to the database
+    // connect to database
     let conn = match Connection::connect(config.db_url, TlsMode::None) {
         Ok(conn) => conn,
         Err(error) => {
@@ -31,7 +31,7 @@ fn main() {
     }
 
     println!(
-        "[pg-dispatch] Listening to \"{}\" channel.",
+        "[pg-dispatch] Listening to channel: \"{}\".",
         config.db_channel
     );
 
@@ -39,10 +39,8 @@ fn main() {
     let notifications = conn.notifications();
     let mut iter = notifications.blocking_iter();
 
-    // instantiate dispatcher
     let dispatcher = Dispatcher::from_config(&config);
 
-    // main loop
     loop {
         match iter.next() {
             Ok(Some(notification)) => dispatcher.execute_command(notification.payload),

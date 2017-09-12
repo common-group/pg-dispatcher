@@ -1,7 +1,8 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::ffi::OsString;
+use std::io::{BufRead, BufReader, Write};
 
 /// For exchanging in the job channel
 enum Message {
@@ -84,28 +85,27 @@ impl Worker {
                 Message::Payload(payload) => {
                     println!("[worker-{}] Got payload: {}.", id, payload);
 
-                    // build & spawn command
+                    // spawn child command
                     // TODO: if a thread panics, does the threadpool replaces them?
-                    let output =
+                    let mut child =
                         Command::new(&program)
                             .args(program_arguments)
-                            .env("PG_DISPATCH_PAYLOAD", payload)
-                            .output()
+                            .stdin(Stdio::piped())
+                            .stdout(Stdio::piped())
+                            .stderr(Stdio::piped())
+                            .spawn()
                             .unwrap_or_else(|e| panic!("failed to execute process: {}\n", e));
 
-                    // collect stdout, stderr, status_code
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    let exit_status = output.status;
+                    // pass payload data through child process stdin
+                    child
+                        .stdin
+                        .take()
+                        .unwrap()
+                        .write_all(payload.as_bytes())
+                        .expect("couldn't write to child process stdin");
 
-                    // propagate standard streams and exit status code
-                    for line in stderr.lines() {
-                        eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line);
-                    }
-
-                    for line in stdout.lines() {
-                        println!("[{}-{}] {}", program.to_str().unwrap(), id, line);
-                    }
+                    // wait for child process to finish and propagate exit status code
+                    let exit_status = child.wait().unwrap();
                     match exit_status.success() {
                         true => {
                             println!(
@@ -123,6 +123,13 @@ impl Worker {
                                 exit_status.code().unwrap()
                             );
                         }
+                    }
+                    // propagate standard streams
+                    for line in BufReader::new(child.stderr.take().unwrap()).lines() {
+                        eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line.unwrap())
+                    }
+                    for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+                        println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
                     }
                 }
                 Message::Terminate => {
