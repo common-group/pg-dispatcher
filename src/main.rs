@@ -1,5 +1,5 @@
 extern crate postgres;
-extern crate fallible_iterator;
+extern crate redis;
 
 mod cli;
 mod dispatcher;
@@ -7,44 +7,37 @@ mod thread_pool;
 
 use cli::create_cli_app;
 use dispatcher::{Dispatcher, Config};
-use fallible_iterator::FallibleIterator;
-use postgres::{Connection, TlsMode};
 use std::process::exit;
-
+use std::thread;
 
 fn main() {
-    // consume cli arguments
     let cli_matches = create_cli_app().get_matches();
     let config = Config::from_matches(&cli_matches);
+    let dispatcher = Dispatcher::from_config(&config);
+    let redis_client = redis::Client::open(config.redis_url.as_str()).unwrap();
+    let mut _servers: Vec<thread::JoinHandle<()>> = Vec::new();
 
-    // connect to database
-    let conn = match Connection::connect(config.db_url, TlsMode::None) {
-        Ok(conn) => conn,
-        Err(error) => {
-            eprintln!("Failed to connect to the database: {}.", error);
-            exit(1);
-        }
-    };
-    if let Err(_) = conn.execute(&format!("LISTEN {}", config.db_channel), &[]) {
-        eprintln!("Failed to execute LISTEN command in database.");
-        exit(1)
+    if config.producer {
+        let pg_conn = match postgres::Connection::connect(config.db_url.as_str(), postgres::TlsMode::None) {
+            Ok(conn) => conn,
+            Err(error) => {
+                eprintln!("Failed to connect to the database: {}.", error);
+                exit(1);
+            }
+        };
+
+        _servers.push(
+            dispatcher.start_producer(
+                pg_conn, redis_client.clone()));
     }
 
-    println!(
-        "[pg-dispatch] Listening to channel: \"{}\".",
-        config.db_channel
-    );
+    if config.consumer {
+        _servers.push(
+            dispatcher.start_consumer(
+                redis_client.clone()));
+    }
 
-    // make an iterator over notifications
-    let notifications = conn.notifications();
-    let mut iter = notifications.blocking_iter();
-
-    let dispatcher = Dispatcher::from_config(&config);
-
-    loop {
-        match iter.next() {
-            Ok(Some(notification)) => dispatcher.execute_command(notification.payload),
-            _ => {}
-        }
+    for _server in _servers {
+        let _ = _server.join();
     }
 }

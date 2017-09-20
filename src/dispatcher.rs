@@ -1,54 +1,169 @@
 extern crate clap;
+extern crate postgres;
+extern crate redis;
+extern crate fallible_iterator;
+extern crate base64;
 
 use std::ffi::OsString;
+use self::fallible_iterator::FallibleIterator;
 use thread_pool;
-
+use std::str;
+use std::process::exit;
+use std::{thread, time};
+use redis::Commands;
 
 #[derive(Debug, Clone)]
-pub struct Config<'a> {
-    pub db_url: &'a str,
-    pub db_channel: &'a str,
+pub struct Config {
+    pub db_url: String,
+    pub redis_url: String,
+    pub db_channel: String,
+    pub consumer: bool,
+    pub producer: bool,
     pub max_threads: usize,
     pub command_vector: Vec<OsString>,
 }
 
-impl<'a> Config<'a> {
-    pub fn from_matches(matches: &'a clap::ArgMatches<'a>) -> Config {
-        let max_threads = match matches.value_of("workers") {
-            Some(v) => v.parse::<usize>().unwrap_or(4),
-            _ => 4,
-        };
-
-        let command_vector: Vec<OsString> = matches
-            .value_of("exec")
-            .unwrap()
-            .split_whitespace()
-            .map(|s| OsString::from(s))
-            .collect();
-
+impl Config {
+    pub fn from_matches(matches: &clap::ArgMatches) -> Config {
         Config {
-            db_url: matches.value_of("db-uri").unwrap(),
-            db_channel: matches.value_of("channel").unwrap(),
-            max_threads: max_threads,
-            command_vector: command_vector,
+            db_url: matches.value_of("db-uri").unwrap().to_string(),
+            redis_url: matches.value_of("redis-uri").unwrap().to_string(),
+            consumer: match matches.value_of("mode") {
+                Some("consumer") => true,
+                Some("producer") => false,
+                Some(_) | None => true
+            },
+            producer: match matches.value_of("mode") {
+                Some("consumer") => false,
+                Some("producer") => true,
+                Some(_) | None => true
+            },
+            db_channel: matches.value_of("channel")
+                .unwrap().to_string(),
+                max_threads: match matches.value_of("workers") {
+                    Some(v) => v.parse::<usize>().unwrap_or(4),
+                    _ => 4,
+                },
+                command_vector: matches.value_of("exec")
+                    .unwrap()
+                    .split_whitespace()
+                    .map(|s| OsString::from(s))
+                    .collect(),
         }
     }
 }
 
 #[derive(Debug)]
 pub struct Dispatcher {
-    pub pool: thread_pool::ThreadPool,
+    pub config: Config,
 }
 
 impl Dispatcher {
     pub fn from_config(config: &Config) -> Dispatcher {
         Dispatcher {
-            pool: thread_pool::ThreadPool::new(config.max_threads, config.command_vector.clone()),
+            config: config.clone()
         }
     }
 
-    pub fn execute_command(&self, payload: String) {
-        self.pool.execute(payload)
+    pub fn start_consumer(&self, redis_client: redis::Client) -> thread::JoinHandle<()> {
+        {
+            let config = self.config.clone();
+            let redis_conn = redis_client.get_connection().unwrap();
+            let handler = thread::spawn(move||{
+                let pool : thread_pool::ThreadPool = thread_pool::ThreadPool::new(
+                    config.max_threads, 
+                    config.command_vector.clone()
+                    );
+
+                println!(
+                    "[pg-dispatcher-consumer] Start consumer for payloads of channel {}",
+                    config.db_channel
+                    );
+
+                loop {
+                    let diff_result : Result<Vec<String>, _> = redis_conn
+                        .sdiff(&[
+                               format!(
+                                   "dispatcher:{}:pending_set",
+                                   &config.db_channel),
+                                   format!(
+                                       "dispatcher:{}:processing_set",
+                                       &config.db_channel)
+                        ]);
+
+                    if let Ok(diff) = diff_result {
+                        for (i, key) in diff.iter().enumerate() {
+                            if i > config.max_threads { break; }
+                            let decoded = base64::decode(&key).unwrap();
+
+                            if let Ok(payload) = str::from_utf8(&decoded) {
+                                match redis_conn.sadd(
+                                    format!(
+                                        "dispatcher:{}:processing_set",
+                                        &config.db_channel
+                                        ), key) {
+                                    Ok(1) => {
+                                        println!(
+                                            "[pg-dispatcher-consumer] start processing key {}",
+                                            &key);
+                                        pool.execute(payload.to_string())
+                                    },
+                                    _ => {}
+                                };
+                            }
+                        }
+                    }
+
+                    thread::sleep(time::Duration::from_millis(1000));
+                }
+            });
+
+            return handler;
+        }
+    }
+
+    pub fn start_producer(&self, pg_conn: postgres::Connection, redis_client: redis::Client) -> thread::JoinHandle<()> {
+        {
+            let config = self.config.clone();
+            if let Err(_) = pg_conn.execute(&format!("LISTEN {}", config.db_channel), &[]) {
+                eprintln!("Failed to execute LISTEN command in database.");
+                exit(1)
+            }
+            let redis_conn = redis_client.get_connection().unwrap();
+
+            let handler = thread::spawn(move||{
+                println!(
+                    "[pg-dispatcher-producer] Producer Listening to channel: \"{}\".",
+                    config.db_channel
+                    );
+
+                let notifications = pg_conn.notifications();
+                let mut iter = notifications.blocking_iter();
+
+                loop {
+                    match iter.next() {
+
+                        Ok(Some(notification)) => {
+                            let key_value = base64::encode(&notification.payload);
+                            match redis_conn.sadd(
+                                format!("dispatcher:{}:pending_set", &config.db_channel),
+                                &key_value) {
+                                Ok(1) => {
+                                    println!("[pg-dispatcher-producer] received key {}", &key_value);
+                                },
+                                _ => {
+                                    println!("[pg-dispatcher-producer] key {} already persisted", &key_value);
+                                }
+                            };
+
+                        },
+                        _ => {}
+                    }
+                }
+            });
+
+            return handler;
+        }
     }
 }
 
@@ -60,39 +175,46 @@ mod tests {
     #[test]
     fn dispatcher_config_from_matches_test() {
         let matches = cli::create_cli_app().get_matches_from(vec![
-            "pg-dispatch",
-            "--db-uri",
-            "foodb",
-            "--channel",
-            "foochan",
-            "--exec",
-            "sh test.sh",
-            "--workers",
-            "5",
+                                                             "pg-dispatch",
+                                                             "--db-uri",
+                                                             "foodb",
+                                                             "--redis-uri",
+                                                             "redis_uri",
+                                                             "--channel",
+                                                             "foochan",
+                                                             "--exec",
+                                                             "sh test.sh",
+                                                             "--workers",
+                                                             "5",
         ]);
         let config = Config::from_matches(&matches);
 
         assert_eq!(config.db_url, "foodb");
         assert_eq!(config.db_channel, "foochan");
+        assert_eq!(config.redis_url, "redis_uri");
+        assert_eq!(config.producer, true);
+        assert_eq!(config.consumer, true);
         assert_eq!(
             config.command_vector,
             vec![OsString::from("sh"), OsString::from("test.sh")]
-        );
+            );
         assert_eq!(config.max_threads, 5);
     }
 
     #[test]
     fn dispatcher_from_config() {
         let matches = cli::create_cli_app().get_matches_from(vec![
-            "pg-dispatch",
-            "--db-uri",
-            "foodb",
-            "--channel",
-            "foochan",
-            "--exec",
-            "sh test.sh",
-            "--workers",
-            "5",
+                                                             "pg-dispatch",
+                                                             "--db-uri",
+                                                             "foodb",
+                                                             "--redis-uri",
+                                                             "redis_uri",
+                                                             "--channel",
+                                                             "foochan",
+                                                             "--exec",
+                                                             "sh test.sh",
+                                                             "--workers",
+                                                             "5",
         ]);
         let config = Config::from_matches(&matches);
 
