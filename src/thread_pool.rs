@@ -14,6 +14,7 @@ enum Message {
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
+    pub idle_counter: Arc<Mutex<usize>>
 }
 
 impl ThreadPool {
@@ -23,6 +24,7 @@ impl ThreadPool {
         // channel for exchanging job messages inside ThreadPool
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
+        let idle_counter = Arc::new(Mutex::new(size));
 
         let command_vector = Arc::new(command_vector);
 
@@ -30,12 +32,13 @@ impl ThreadPool {
         for id in 0..size {
             workers.push(Worker::new(
                 id,
+                idle_counter.clone(),
                 receiver.clone(),
                 Arc::clone(&command_vector),
             ));
         }
 
-        ThreadPool { workers, sender }
+        ThreadPool { workers, sender, idle_counter}
     }
 
     pub fn execute(&self, payload: String) {
@@ -72,6 +75,7 @@ struct Worker {
 impl Worker {
     fn new(
         id: usize,
+        idle_counter: Arc<Mutex<usize>>,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
         command_vector: Arc<Vec<OsString>>,
     ) -> Worker {
@@ -83,6 +87,10 @@ impl Worker {
 
             match message {
                 Message::Payload(payload) => {
+                    {
+                        let guard_idle_counter = idle_counter.clone();
+                        *guard_idle_counter.lock().unwrap() -= 1;
+                    }
                     println!("[worker-{}] Got payload: {}.", id, payload);
 
                     // spawn child command
@@ -130,6 +138,11 @@ impl Worker {
                     }
                     for line in BufReader::new(child.stdout.take().unwrap()).lines() {
                         println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
+                    }
+
+                    {
+                        let guard_idle_counter = idle_counter.clone();
+                        *guard_idle_counter.lock().unwrap() += 1;
                     }
                 }
                 Message::Terminate => {
