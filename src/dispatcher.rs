@@ -69,39 +69,41 @@ impl Dispatcher {
         {
             let config = self.config.clone();
             let redis_conn = redis_client.get_connection().unwrap();
+            let pending_set = format!("dispatcher:{}:pending_set", &config.db_channel);
+            let processing_set = format!("dispatcher:{}:processing_set", &config.db_channel);
+
             let handler = thread::spawn(move||{
                 let pool : thread_pool::ThreadPool = thread_pool::ThreadPool::new(
-                    config.max_threads, 
-                    config.command_vector.clone()
-                    );
+                    config.max_threads,
+                    config.command_vector.clone());
 
                 println!(
                     "[pg-dispatcher-consumer] Start consumer for payloads of channel {}",
-                    config.db_channel
-                    );
+                    config.db_channel);
 
                 loop {
+                    let guard_idle_counter = pool.idle_counter.clone();
+                    let guard_counter: usize;
+
+                    {
+                        let counter = match guard_idle_counter.lock() {
+                            Ok(count) => count,
+                            Err(p) => p.into_inner()
+                        };
+
+                        guard_counter = *counter;
+                    }
+
                     let diff_result : Result<Vec<String>, _> = redis_conn
-                        .sdiff(&[
-                               format!(
-                                   "dispatcher:{}:pending_set",
-                                   &config.db_channel),
-                                   format!(
-                                       "dispatcher:{}:processing_set",
-                                       &config.db_channel)
-                        ]);
+                        .sdiff(&[pending_set.clone(), processing_set.clone()]);
 
                     if let Ok(diff) = diff_result {
                         for (i, key) in diff.iter().enumerate() {
-                            if i > config.max_threads { break; }
+                            if i+1 > guard_counter { break; }
                             let decoded = base64::decode(&key).unwrap();
 
                             if let Ok(payload) = str::from_utf8(&decoded) {
-                                match redis_conn.sadd(
-                                    format!(
-                                        "dispatcher:{}:processing_set",
-                                        &config.db_channel
-                                        ), key) {
+                                match redis_conn.sadd(processing_set.clone(), key) {
                                     Ok(1) => {
                                         println!(
                                             "[pg-dispatcher-consumer] start processing key {}",
@@ -114,7 +116,7 @@ impl Dispatcher {
                         }
                     }
 
-                    thread::sleep(time::Duration::from_millis(1000));
+                    thread::sleep(time::Duration::from_millis(100));
                 }
             });
 
