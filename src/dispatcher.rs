@@ -29,13 +29,11 @@ impl Config {
             db_url: matches.value_of("db-uri").unwrap().to_string(),
             redis_url: matches.value_of("redis-uri").unwrap().to_string(),
             consumer: match matches.value_of("mode") {
-                Some("consumer") => true,
                 Some("producer") => false,
                 Some(_) | None => true
             },
             producer: match matches.value_of("mode") {
                 Some("consumer") => false,
-                Some("producer") => true,
                 Some(_) | None => true
             },
             db_channel: matches.value_of("channel")
@@ -127,6 +125,7 @@ impl Dispatcher {
     pub fn start_producer(&self, pg_conn: postgres::Connection, redis_client: redis::Client) -> thread::JoinHandle<()> {
         {
             let config = self.config.clone();
+            let pending_set = format!("dispatcher:{}:pending_set", &config.db_channel);
             if let Err(_) = pg_conn.execute(&format!("LISTEN {}", config.db_channel), &[]) {
                 eprintln!("Failed to execute LISTEN command in database.");
                 exit(1)
@@ -147,9 +146,7 @@ impl Dispatcher {
 
                         Ok(Some(notification)) => {
                             let key_value = base64::encode(&notification.payload);
-                            match redis_conn.sadd(
-                                format!("dispatcher:{}:pending_set", &config.db_channel),
-                                &key_value) {
+                            match redis_conn.sadd(pending_set.clone(), &key_value) {
                                 Ok(1) => {
                                     println!("[pg-dispatcher-producer] received key {}", &key_value);
                                 },
