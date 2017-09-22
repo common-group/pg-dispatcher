@@ -1,3 +1,5 @@
+extern crate base64;
+
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
@@ -10,10 +12,17 @@ enum Message {
     Terminate,
 }
 
+pub enum WorkerMessage {
+    ProgramNotFound(String),
+    StdinFailed(String),
+    DoneTask(String),
+}
+
 #[derive(Debug)]
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
+    pub workers_channel: mpsc::Receiver<WorkerMessage>,
     pub idle_counter: Arc<Mutex<usize>>
 }
 
@@ -23,6 +32,7 @@ impl ThreadPool {
 
         // channel for exchanging job messages inside ThreadPool
         let (sender, receiver) = mpsc::channel();
+        let (workers_sender, workers_channel) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
         let idle_counter = Arc::new(Mutex::new(size));
 
@@ -33,12 +43,13 @@ impl ThreadPool {
             workers.push(Worker::new(
                     id,
                     idle_counter.clone(),
+                    workers_sender.clone(),
                     receiver.clone(),
                     Arc::clone(&command_vector),
                     ));
         }
 
-        ThreadPool { workers, sender, idle_counter}
+        ThreadPool { workers, sender, workers_channel, idle_counter}
     }
 
     pub fn execute(&self, payload: String) {
@@ -76,6 +87,7 @@ impl Worker {
     fn new(
         id: usize,
         idle_counter: Arc<Mutex<usize>>,
+        workers_sender: mpsc::Sender<WorkerMessage>,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
         command_vector: Arc<Vec<OsString>>,
         ) -> Worker {
@@ -91,6 +103,7 @@ impl Worker {
                         let guard_idle_counter = idle_counter.clone();
                         *guard_idle_counter.lock().unwrap() -= 1;
                     }
+                    let payload_base64 = base64::encode(&payload);
                     println!("[worker-{}] Got payload: {}.", id, payload);
 
                     // spawn child command
@@ -132,8 +145,19 @@ impl Worker {
                             for line in BufReader::new(child.stdout.take().unwrap()).lines() {
                                 println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
                             }
-                        } else { eprintln!("couldn't write to child process stdin"); }
+                            workers_sender
+                                .send(WorkerMessage::DoneTask(payload_base64))
+                                .unwrap();
+                        } else {
+                            workers_sender
+                                .send(WorkerMessage::StdinFailed(payload_base64))
+                                .unwrap();
+                            eprintln!("couldn't write to child process stdin");
+                        }
                     } else {
+                        workers_sender
+                            .send(WorkerMessage::ProgramNotFound(payload_base64))
+                            .unwrap();
                         eprintln!("couldn't execute program {:?}", program);
                     }
 
