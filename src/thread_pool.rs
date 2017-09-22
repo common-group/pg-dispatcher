@@ -95,7 +95,7 @@ impl Worker {
 
                     // spawn child command
                     // TODO: if a thread panics, does the threadpool replaces them?
-                    let child_handler =
+                    let child_command =
                         Command::new(&program)
                         .args(program_arguments)
                         .stdin(Stdio::piped())
@@ -103,68 +103,54 @@ impl Worker {
                         .stderr(Stdio::piped())
                         .spawn();
 
-                    match child_handler {
-                        Ok(mut child) => {
-                            // pass payload data through child process stdin
-                            match child
-                                .stdin
-                                .take()
-                                .unwrap()
-                                .write_all(payload.as_bytes()) {
-                                    Ok(_) => {
-                                        // wait for child process to finish and propagate exit status code
-                                        let exit_status = child.wait().unwrap();
-                                        match exit_status.success() {
-                                            true => {
-                                                println!(
-                                                    "[worker-{}] Command succeded with status code {}.",
-                                                    id,
-                                                    exit_status.code().unwrap()
-                                                    );
-                                            }
-                                            false => {
-                                                // TODO: ExitStatus.code() will return None if process was terminated by a signal.
-                                                eprintln!(
-                                                    "[worker-{}] Command {} failed with status code {}.",
-                                                    id,
-                                                    program.to_str().unwrap(),
-                                                    exit_status.code().unwrap()
-                                                    );
-                                            }
-                                        }
-                                        // propagate standard streams
-                                        for line in BufReader::new(child.stderr.take().unwrap()).lines() {
-                                            eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line.unwrap())
-                                        }
-                                        for line in BufReader::new(child.stdout.take().unwrap()).lines() {
-                                            println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
-                                        }
-                                    }
-                                    Err(_) => {
-                                        eprintln!("couldn't write to child process stdin");
-                                    }
-                                };
-
-                        },
-                        Err(_) => {
-                            eprintln!("couldn't execute program {:?}", program);
-                        }
-                    };
-
-                    {
-                        let guard_idle_counter = idle_counter.clone();
-                        *guard_idle_counter.lock().unwrap() += 1;
+                    if let Ok(mut child) = child_command {
+                        // pass payload data through child process stdin
+                        let write_to_child = child
+                            .stdin
+                            .take()
+                            .unwrap()
+                            .write_all(payload.as_bytes());
+                        if let Ok(_) = write_to_child {
+                            let exit_status = child.wait().unwrap();
+                            match exit_status.success() {
+                                true => {
+                                    println!(
+                                        "[worker-{}] Command succeded with status code {}.",
+                                        id, exit_status.code().unwrap());
+                                }
+                                false => {
+                                    // TODO: ExitStatus.code() will return None if process was terminated by a signal.
+                                    eprintln!(
+                                        "[worker-{}] Command {} failed with status code {}.",
+                                        id, program.to_str().unwrap(), exit_status.code().unwrap());
+                                }
+                            }
+                            // propagate standard streams
+                            for line in BufReader::new(child.stderr.take().unwrap()).lines() {
+                                eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line.unwrap())
+                            }
+                            for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+                                println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
+                            }
+                        } else { eprintln!("couldn't write to child process stdin"); }
+                    } else {
+                        eprintln!("couldn't execute program {:?}", program);
                     }
-                }
-                Message::Terminate => {
-                    println!("[worker-{}] Terminating.", id);
-                    break;
+
+                {
+                    let guard_idle_counter = idle_counter.clone();
+                    *guard_idle_counter.lock().unwrap() += 1;
                 }
             }
-        });
-        Worker {
-            id,
-            thread: Some(thread),
+            Message::Terminate => {
+                println!("[worker-{}] Terminating.", id);
+                break;
+            }
         }
+    });
+    Worker {
+        id,
+        thread: Some(thread),
     }
+}
 }

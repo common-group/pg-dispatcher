@@ -103,9 +103,7 @@ impl Dispatcher {
                             if let Ok(payload) = str::from_utf8(&decoded) {
                                 match redis_conn.sadd(processing_set.clone(), key) {
                                     Ok(1) => {
-                                        println!(
-                                            "[pg-dispatcher-consumer] start processing key {}",
-                                            &key);
+                                        println!("[pg-dispatcher-consumer] start processing key {}", &key);
                                         pool.execute(payload.to_string())
                                     },
                                     _ => {}
