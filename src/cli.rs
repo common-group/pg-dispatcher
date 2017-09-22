@@ -39,18 +39,20 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
 
 #[cfg(test)]
 mod tests {
-    use super::{create_cli_app};
+    use super::*;
 
     #[test]
     fn create_cli_app_test() {
-        let matches = create_cli_app()
+        let matches = super::create_cli_app()
             .get_matches_from(vec![
-                              "pg-dispatch", "--db-uri", "foodb",
+                              "pg-dispatch",
+                              "--db-uri", "foodb",
                               "--redis-uri", "redis://localhost:6379",
-                              "--mode", "both"
+                              "--mode", "both",
                               "--channel", "foochan",
                               "--exec", "sh test.sh",
-                              "--workers", "5"]);
+                              "--workers", "5",
+            ]);
 
         assert_eq!("foodb", matches.value_of("db-uri").unwrap());
         assert_eq!("redis://localhost:6379", matches.value_of("redis-uri").unwrap());

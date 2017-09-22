@@ -154,7 +154,6 @@ impl Dispatcher {
                                     println!("[pg-dispatcher-producer] key {} already persisted", &key_value);
                                 }
                             };
-
                         },
                         _ => {}
                     }
@@ -173,18 +172,14 @@ mod tests {
 
     #[test]
     fn dispatcher_config_from_matches_test() {
-        let matches = cli::create_cli_app().get_matches_from(vec![
-                                                             "pg-dispatch",
-                                                             "--db-uri",
-                                                             "foodb",
-                                                             "--redis-uri",
-                                                             "redis_uri",
-                                                             "--channel",
-                                                             "foochan",
-                                                             "--exec",
-                                                             "sh test.sh",
-                                                             "--workers",
-                                                             "5",
+        let matches = cli::create_cli_app()
+            .get_matches_from(vec![
+                              "pg-dispatch",
+                              "--db-uri", "foodb",
+                              "--redis-uri", "redis_uri",
+                              "--channel", "foochan",
+                              "--exec", "sh test.sh",
+                              "--workers", "5",
         ]);
         let config = Config::from_matches(&matches);
 
