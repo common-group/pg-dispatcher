@@ -6,7 +6,7 @@ extern crate base64;
 
 use std::ffi::OsString;
 use self::fallible_iterator::FallibleIterator;
-use thread_pool;
+use thread_pool::{ThreadPool, WorkerMessage};
 use std::str;
 use std::process::exit;
 use std::{thread, time};
@@ -69,9 +69,10 @@ impl Dispatcher {
             let redis_conn = redis_client.get_connection().unwrap();
             let pending_set = format!("dispatcher:{}:pending_set", &config.db_channel);
             let processing_set = format!("dispatcher:{}:processing_set", &config.db_channel);
+            let done_set = format!("dispatcher:{}:done_set", &config.db_channel);
 
             let handler = thread::spawn(move||{
-                let pool : thread_pool::ThreadPool = thread_pool::ThreadPool::new(
+                let pool = ThreadPool::new(
                     config.max_threads,
                     config.command_vector.clone());
 
@@ -90,6 +91,20 @@ impl Dispatcher {
                         };
 
                         guard_counter = *counter;
+                    }
+
+                    if let Ok(worker_output) = pool.workers_channel.try_recv() {
+                        match worker_output {
+                            WorkerMessage::ProgramNotFound(b64_key)
+                                | WorkerMessage::StdinFailed(b64_key) => {
+                                let _ : Result<(),_> = redis_conn.
+                                    srem(processing_set.clone(), b64_key);
+                            },
+                            WorkerMessage::DoneTask(b64_key) => {
+                                let _ : Result<(), _> = redis_conn.
+                                    sadd(done_set.clone(), b64_key);
+                            }
+                        }
                     }
 
                     let diff_result : Result<Vec<String>, _> = redis_conn
