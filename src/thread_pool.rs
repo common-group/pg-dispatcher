@@ -31,11 +31,11 @@ impl ThreadPool {
         let mut workers = Vec::with_capacity(size);
         for id in 0..size {
             workers.push(Worker::new(
-                id,
-                idle_counter.clone(),
-                receiver.clone(),
-                Arc::clone(&command_vector),
-            ));
+                    id,
+                    idle_counter.clone(),
+                    receiver.clone(),
+                    Arc::clone(&command_vector),
+                    ));
         }
 
         ThreadPool { workers, sender, idle_counter}
@@ -78,7 +78,7 @@ impl Worker {
         idle_counter: Arc<Mutex<usize>>,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
         command_vector: Arc<Vec<OsString>>,
-    ) -> Worker {
+        ) -> Worker {
 
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
@@ -95,50 +95,61 @@ impl Worker {
 
                     // spawn child command
                     // TODO: if a thread panics, does the threadpool replaces them?
-                    let mut child =
+                    let child_handler =
                         Command::new(&program)
-                            .args(program_arguments)
-                            .stdin(Stdio::piped())
-                            .stdout(Stdio::piped())
-                            .stderr(Stdio::piped())
-                            .spawn()
-                            .unwrap_or_else(|e| panic!("failed to execute process: {}\n", e));
+                        .args(program_arguments)
+                        .stdin(Stdio::piped())
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn();
 
-                    // pass payload data through child process stdin
-                    child
-                        .stdin
-                        .take()
-                        .unwrap()
-                        .write_all(payload.as_bytes())
-                        .expect("couldn't write to child process stdin");
+                    match child_handler {
+                        Ok(mut child) => {
+                            // pass payload data through child process stdin
+                            match child
+                                .stdin
+                                .take()
+                                .unwrap()
+                                .write_all(payload.as_bytes()) {
+                                    Ok(_) => {
+                                        // wait for child process to finish and propagate exit status code
+                                        let exit_status = child.wait().unwrap();
+                                        match exit_status.success() {
+                                            true => {
+                                                println!(
+                                                    "[worker-{}] Command succeded with status code {}.",
+                                                    id,
+                                                    exit_status.code().unwrap()
+                                                    );
+                                            }
+                                            false => {
+                                                // TODO: ExitStatus.code() will return None if process was terminated by a signal.
+                                                eprintln!(
+                                                    "[worker-{}] Command {} failed with status code {}.",
+                                                    id,
+                                                    program.to_str().unwrap(),
+                                                    exit_status.code().unwrap()
+                                                    );
+                                            }
+                                        }
+                                        // propagate standard streams
+                                        for line in BufReader::new(child.stderr.take().unwrap()).lines() {
+                                            eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line.unwrap())
+                                        }
+                                        for line in BufReader::new(child.stdout.take().unwrap()).lines() {
+                                            println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
+                                        }
+                                    }
+                                    Err(_) => {
+                                        eprintln!("couldn't write to child process stdin");
+                                    }
+                                };
 
-                    // wait for child process to finish and propagate exit status code
-                    let exit_status = child.wait().unwrap();
-                    match exit_status.success() {
-                        true => {
-                            println!(
-                                "[worker-{}] Command succeded with status code {}.",
-                                id,
-                                exit_status.code().unwrap()
-                            );
+                        },
+                        Err(_) => {
+                            eprintln!("couldn't execute program {:?}", program);
                         }
-                        false => {
-                            // TODO: ExitStatus.code() will return None if process was terminated by a signal.
-                            eprintln!(
-                                "[worker-{}] Command {} failed with status code {}.",
-                                id,
-                                program.to_str().unwrap(),
-                                exit_status.code().unwrap()
-                            );
-                        }
-                    }
-                    // propagate standard streams
-                    for line in BufReader::new(child.stderr.take().unwrap()).lines() {
-                        eprintln!("[{}-{}]! {}", program.to_str().unwrap(), id, line.unwrap())
-                    }
-                    for line in BufReader::new(child.stdout.take().unwrap()).lines() {
-                        println!("[{}-{}] {}", program.to_str().unwrap(), id, line.unwrap());
-                    }
+                    };
 
                     {
                         let guard_idle_counter = idle_counter.clone();
