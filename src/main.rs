@@ -9,6 +9,8 @@ use cli::create_cli_app;
 use dispatcher::{Dispatcher, Config};
 use std::process::exit;
 use std::thread;
+use postgres::{TlsMode};
+use postgres::tls::native_tls::NativeTls;
 
 fn main() {
     let cli_matches = create_cli_app().get_matches();
@@ -18,7 +20,15 @@ fn main() {
     let mut _servers: Vec<thread::JoinHandle<()>> = Vec::new();
 
     if config.producer {
-        let pg_conn = match postgres::Connection::connect(config.db_url.as_str(), postgres::TlsMode::None) {
+        let negotiator = NativeTls::new().unwrap();
+        let tls_mode : TlsMode = match config.tls_mode.as_ref() {
+            "prefer" => { TlsMode::Prefer(&negotiator) },
+            "require" => { TlsMode::Require(&negotiator) },
+            _ => { TlsMode::None },
+        };
+        let pg_conn = match postgres::Connection::connect(
+            config.db_url.as_str(), tls_mode
+         ) {
             Ok(conn) => conn,
             Err(error) => {
                 eprintln!("Failed to connect to the database: {}.", error);

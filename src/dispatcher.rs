@@ -20,6 +20,7 @@ pub struct Config {
     pub consumer: bool,
     pub producer: bool,
     pub max_threads: usize,
+    pub tls_mode: String,
     pub command_vector: Vec<OsString>,
 }
 
@@ -36,17 +37,17 @@ impl Config {
                 Some("consumer") => false,
                 Some(_) | None => true
             },
-            db_channel: matches.value_of("channel")
-                .unwrap().to_string(),
-                max_threads: match matches.value_of("workers") {
-                    Some(v) => v.parse::<usize>().unwrap_or(4),
-                    _ => 4,
-                },
-                command_vector: matches.value_of("exec")
-                    .unwrap()
-                    .split_whitespace()
-                    .map(|s| OsString::from(s))
-                    .collect(),
+            tls_mode: matches.value_of("tls-mode").unwrap_or("none").to_string(),
+            db_channel: matches.value_of("channel").unwrap().to_string(),
+            max_threads: match matches.value_of("workers") {
+                Some(v) => v.parse::<usize>().unwrap_or(4),
+                _ => 4,
+            },
+            command_vector: matches.value_of("exec")
+                .unwrap()
+                .split_whitespace()
+                .map(|s| OsString::from(s))
+                .collect(),
         }
     }
 }

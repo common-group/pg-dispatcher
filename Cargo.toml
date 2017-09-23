@@ -6,7 +6,7 @@ authors = ["Antônio Roberto <forevertonny@gmail.com>", "Tiago Guimarães <tilac
 
 [dependencies]
 clap = "~2.19.0"
-postgres = "0.15"
+postgres = { version = "0.15", features = ["with-native-tls"] }
 fallible-iterator = "0.1.3"
 redis = "0.8.0"
 base64 = "~0.6.0"

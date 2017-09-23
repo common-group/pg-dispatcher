@@ -10,6 +10,11 @@ pub fn create_cli_app<'a, 'b>() -> App<'a, 'b> {
              .help("database connection string postgres://user:pass@host:port/dbname")
              .required(false)
              .takes_value(true))
+        .arg(Arg::with_name("tls-mode")
+             .long("tls-mode")
+             .help("database tls mode (none, prefer, require) default is none")
+             .required(false)
+             .takes_value(true))
         .arg(Arg::with_name("redis-uri")
              .long("redis-uri")
              .help("redis connection string redis://localhost:6379")
@@ -56,6 +61,7 @@ mod tests {
 
         assert_eq!("foodb", matches.value_of("db-uri").unwrap());
         assert_eq!("redis://localhost:6379", matches.value_of("redis-uri").unwrap());
+        assert_eq!("none", matches.value_of("tls-mode").unwrap());
         assert_eq!("both", matches.value_of("mode").unwrap());
         assert_eq!("foochan", matches.value_of("channel").unwrap());
         assert_eq!("sh test.sh", matches.value_of("exec").unwrap());
