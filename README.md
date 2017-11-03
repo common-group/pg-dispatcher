@@ -1,5 +1,12 @@
 ### under development
 
+### TODO
+- [ ] Can have multiple dispatcher running on same channel with diff commands
+- [ ] Add --retry option and logic to remove failed executions from (done, processing) and count retries
+- [ ] Maybe add --retry-on-code=[1, ...] retry on custom exit codes
+- [ ] Build with alpine docker (waiting for rust 1.18 on packages)
+
+
 # pg-dispatch
 
 Abstract listener for PostgreSQL that listens to a single database channel and executes a
