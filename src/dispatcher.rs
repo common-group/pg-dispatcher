@@ -164,6 +164,9 @@ impl Dispatcher {
                                 Ok(1) => {
                                     println!("[pg-dispatcher-producer] received key {}", &key_value);
                                 },
+                                Err(error) => {
+                                    println!("[pg-dispatcher-producer] error {:?}", error);
+                                },
                                 _ => {
                                     println!("[pg-dispatcher-producer] key {} already persisted", &key_value);
                                 }
