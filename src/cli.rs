@@ -52,6 +52,7 @@ mod tests {
             .get_matches_from(vec![
                               "pg-dispatch",
                               "--db-uri", "foodb",
+                              "--tls-mode", "prefer",
                               "--redis-uri", "redis://localhost:6379",
                               "--mode", "both",
                               "--channel", "foochan",
@@ -61,7 +62,7 @@ mod tests {
 
         assert_eq!("foodb", matches.value_of("db-uri").unwrap());
         assert_eq!("redis://localhost:6379", matches.value_of("redis-uri").unwrap());
-        assert_eq!("none", matches.value_of("tls-mode").unwrap());
+        assert_eq!("prefer", matches.value_of("tls-mode").unwrap());
         assert_eq!("both", matches.value_of("mode").unwrap());
         assert_eq!("foochan", matches.value_of("channel").unwrap());
         assert_eq!("sh test.sh", matches.value_of("exec").unwrap());
