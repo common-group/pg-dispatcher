@@ -144,7 +144,6 @@ impl Dispatcher {
                 eprintln!("Failed to execute LISTEN command in database.");
                 exit(1)
             }
-            let redis_conn = redis_client.get_connection().unwrap();
 
             let handler = thread::spawn(move||{
                 println!(
@@ -161,6 +160,7 @@ impl Dispatcher {
                         Ok(Some(notification)) => {
                             let key_value = base64::encode(&notification.payload);
                             println!("[pg-dispatcher-producer] found new notification {:?}", &key_value);
+                            let redis_conn = redis_client.get_connection().unwrap();
                             match redis_conn.sadd(pending_set.clone(), &key_value) {
                                 Ok(1) => {
                                     println!("[pg-dispatcher-producer] received key {}", &key_value);
