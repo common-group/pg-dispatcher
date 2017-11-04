@@ -160,6 +160,7 @@ impl Dispatcher {
 
                         Ok(Some(notification)) => {
                             let key_value = base64::encode(&notification.payload);
+                            println!("[pg-dispatcher-producer] found new notification {:?}", &key_value);
                             match redis_conn.sadd(pending_set.clone(), &key_value) {
                                 Ok(1) => {
                                     println!("[pg-dispatcher-producer] received key {}", &key_value);
