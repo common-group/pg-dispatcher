@@ -17,12 +17,12 @@ jobs:
       - checkout
       - setup_remote_docker:
           version: 17.05.0-ce
-      # with credentials stored in the UI
       - run: docker login -u $DOCKER_USER -p $DOCKER_PASS
-      # build the application container
       - run: docker build -t comum/pg-dispatcher:latest .
-      # deploy the container
       - run: docker push comum/pg-dispatcher:latest
+
+      - run: docker build -f Dockerfile.alpine -t comum/pg-dispatcher:latest-alpine .
+      - run: docker push comum/pg-dispatcher:latest-alpine
 
 
 workflows:
