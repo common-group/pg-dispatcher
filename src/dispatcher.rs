@@ -102,8 +102,18 @@ impl Dispatcher {
                                     srem(processing_set.clone(), b64_key);
                             },
                             WorkerMessage::DoneTask(b64_key) => {
+                                // add to done task
+                                // TODO: add some task to cleanup the done set
                                 let _ : Result<(), _> = redis_conn.
-                                    sadd(done_set.clone(), b64_key);
+                                    sadd(done_set.clone(), b64_key.clone());
+
+                                // remove from pending set
+                                let _ : Result<(),_> = redis_conn.
+                                    srem(pending_set.clone(), b64_key.clone());
+
+                                // remove from processing set
+                                let _ : Result<(),_> = redis_conn.
+                                    srem(processing_set.clone(), b64_key.clone());
                             }
                         }
                     }
