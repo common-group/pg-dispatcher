@@ -10,31 +10,31 @@ use std::io::prelude::*;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    pub channels: Vec<ChannelConfig>
+    pub dispatchers: Vec<DispatcherConfig>
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ChannelConfig{
+pub struct DispatcherConfig {
     pub name: String,
-    pub producer: Option<ChannelProducerConfig>,
-    pub consumer: Option<ChannelConsumerConfig>,
-    pub redis: ChannelRedisConfig,
+    pub producer: Option<DispatcherProducerConfig>,
+    pub consumer: Option<DispatcherConsumerConfig>,
+    pub redis: DispactherRedisConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ChannelProducerConfig {
+pub struct DispatcherProducerConfig {
     pub listen_channel: String,
     pub postgres_uri: String
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ChannelConsumerConfig {
+pub struct DispatcherConsumerConfig {
     pub workers: usize,
     pub command: String
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ChannelRedisConfig {
+pub struct DispactherRedisConfig {
     pub uri: String
 }
 
@@ -73,8 +73,8 @@ mod tests {
                               "--config", "tests/config/example.toml",
         ]);
         let config = Config::from_matches(&matches);
-        let both_channel = &config.channels[0];
-        let consumer_channel = &config.channels[1];
+        let both_channel = &config.dispatchers[0];
+        let consumer_channel = &config.dispatchers[1];
 
         assert_eq!(both_channel.name, "payment_stream_producer");
         assert_eq!(both_channel.consumer.is_some(), true);
