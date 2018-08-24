@@ -1,0 +1,18 @@
+[[channels]]
+    name = 'payment_stream_producer'
+    [channels.producer]
+        listen_channel = "payment_stream"
+        postgres_uri = "postgres://postgres:example@localhost:5432/dbname"
+    [channels.consumer]
+        workers = 10
+        command = "./payment_process"
+    [channels.redis]
+        uri = "redis://rediskey@localhost:6973/0"
+
+[[channels]]
+    name = 'payment_stream_consumer'
+    [channels.consumer]
+        workers = 10
+        command = "./payment_process"
+    [channels.redis]
+        uri = "redis://rediskey@localhost:6973/0"
