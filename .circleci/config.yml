@@ -7,7 +7,7 @@ jobs:
       - checkout
       - setup_remote_docker:
           version: 17.05.0-ce
-      - run: apk add --update ca-certificates cargo rust openssl openssl-dev && update-ca-certificates
+      - run: apk add --update cargo rust libressl-dev
       - run: cargo test -- --test-threads=1
 
   push_docker:
